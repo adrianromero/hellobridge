@@ -1,0 +1,54 @@
+//    HelloBridge is a bridge from HTTP to MQTT
+//    Copyright (C) 2018 Adrián Romero Corchado.
+//
+//    This file is part of HelloBridge.
+//
+//    HelloIot is free software: you can redistribute it and/or modify
+//    it under the terms of the GNU General Public License as published by
+//    the Free Software Foundation, either version 3 of the License, or
+//    (at your option) any later version.
+//
+//    HelloIot is distributed in the hope that it will be useful,
+//    but WITHOUT ANY WARRANTY; without even the implied warranty of
+//    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//    GNU General Public License for more details.
+//
+//    You should have received a copy of the GNU General Public License
+//    along with HelloIot.  If not, see <http://www.gnu.org/licenses/>.
+//
+apply plugin: 'java'
+apply plugin: 'application'
+
+group = 'com.github.adrianromero'
+version = '1.0.0'
+
+mainClassName = 'com.adr.hellobridge.Main'
+
+description = """"""
+
+sourceCompatibility = '1.8'
+targetCompatibility = '1.8'
+[compileJava, compileTestJava]*.options*.encoding = 'UTF-8'
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+}
+
+dependencies {
+    compile group: 'com.sparkjava', name: 'spark-core', version: '2.7.2'
+    compile group: 'org.slf4j', name: 'slf4j-simple', version: '1.7.25'
+    compile group: 'org.eclipse.paho', name: 'org.eclipse.paho.client.mqttv3', version:'1.2.0'
+    compile group: 'com.google.code.gson', name: 'gson', version: '2.6.2' 
+    
+    testCompile group: 'junit', name: 'junit', version: '4.10'
+}
+
+task sourcesJar(type: Jar, dependsOn: classes) {
+    classifier = 'sources'
+    from sourceSets.main.allSource
+}
+
+artifacts {
+    archives sourcesJar
+}

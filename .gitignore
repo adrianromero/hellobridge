@@ -1,0 +1,10 @@
+# build application files
+/helloiot.properties
+/Californium.properties
+/my-release-key.jks
+/target/
+/nbproject/
+/.gradle/
+/.nb-gradle/
+/build/
+/private/
