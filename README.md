@@ -1,5 +1,5 @@
-HelloBridge 
-============
+HelloBridge  [![Release](https://jitpack.io/v/adrianromero/hellobridge.svg)](https://jitpack.io/#adrianromero/hellobridge)
+===========
 
 HelloBridge is a JSimple HTTP to MQTT bridge.
 
