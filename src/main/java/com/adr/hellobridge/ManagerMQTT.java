@@ -18,10 +18,14 @@
 //
 package com.adr.hellobridge;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
 import org.eclipse.paho.client.mqttv3.MqttAsyncClient;
+import org.eclipse.paho.client.mqttv3.MqttCallback;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttException;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
@@ -31,7 +35,7 @@ import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
  *
  * @author adrian
  */
-public class ManagerMQTT {
+public class ManagerMQTT implements MqttCallback {
 
     public final static String SYS_PREFIX = "$SYS/";
 
@@ -43,14 +47,18 @@ public class ManagerMQTT {
     private final String clientid;
     private final int timeout;
     private final int keepalive;
-    private final int defaultqos;
     private final int version;
     private final int maxinflight;
     private final Properties sslproperties;
 
+    // Manager
+    private GroupManagers group;
+    // MQTT
     private MqttAsyncClient mqttClient;
+    private final List<String> worktopics = new ArrayList<>();
+    private final List<Integer> workqos = new ArrayList<>();
 
-    public ManagerMQTT(String url, String username, String password, String clientid, int timeout, int keepalive, int defaultqos, int version, int maxinflight, Properties sslproperties) {
+    public ManagerMQTT(String url, String username, String password, String clientid, int timeout, int keepalive, int version, int maxinflight, Properties sslproperties) {
 
         this.url = url;
         this.username = username;
@@ -58,16 +66,30 @@ public class ManagerMQTT {
         this.clientid = clientid;
         this.timeout = timeout;
         this.keepalive = keepalive;
-        this.defaultqos = defaultqos;
         this.version = version;
         this.maxinflight = maxinflight;
         this.sslproperties = sslproperties;
 
         this.mqttClient = null;
     }
-
+    
+    public void registerTopicsManager(GroupManagers group) {
+        this.group = group;
+    }
+    
+    public void registerSubscription(String topic, int qos) {
+        worktopics.add(topic);
+        workqos.add(qos);
+    }
+    
     public void connect() throws MqttException {
-
+        
+        String[] listtopics = worktopics.toArray(new String[worktopics.size()]);
+        int[] listqos = new int[workqos.size()];
+        for (int i = 0; i < workqos.size(); i++) {
+            listqos[i] = workqos.get(i);
+        }
+        
         mqttClient = new MqttAsyncClient(url, clientid, new MemoryPersistence());
         MqttConnectOptions options = new MqttConnectOptions();
         if (username != null && !username.isEmpty()) {
@@ -82,7 +104,9 @@ public class ManagerMQTT {
         options.setMaxInflight(maxinflight);
         options.setSSLProperties(sslproperties);
         mqttClient.connect(options).waitForCompletion(1000);
-
+        mqttClient.setCallback(this);
+        mqttClient.subscribe(listtopics, listqos);
+            
         logger.log(Level.INFO, "Connected to MQTT broker on [{0}]", url);
     }
 
@@ -91,6 +115,9 @@ public class ManagerMQTT {
         if (mqttClient != null) {
             if (mqttClient.isConnected()) {
                 try {
+                    mqttClient.setCallback(null);
+                    String[] listtopics = worktopics.toArray(new String[worktopics.size()]);
+                    mqttClient.unsubscribe(listtopics);                    
                     mqttClient.disconnect();
                     mqttClient.close();
                 } catch (MqttException ex) {
@@ -101,19 +128,30 @@ public class ManagerMQTT {
         }
     }
 
-    public void publish(String topic, int qos, byte[] message, boolean isRetained) throws MqttException {
+    public void publish(EventMessage message) throws MqttException {
 
         // To be executed in Executor thread
         if (mqttClient == null) {
             return;
         }
 
-        logger.log(Level.INFO, "Publishing message to broker. [{0}]", topic);
-        MqttMessage mm = new MqttMessage(message);
-        mm.setQos(qos < 0 ? defaultqos : qos);
-        mm.setRetained(isRetained);
-        mqttClient.publish(topic, mm);
-
-        logger.log(Level.INFO, "Message published to topic [{0}]", topic);
+        MqttMessage mm = new MqttMessage(message.getMessage());
+        mm.setQos(message.getQoS());
+        mm.setRetained(message.isRetained());
+        mqttClient.publish(message.getTopic(), mm);
     }
+    
+    @Override
+    public void connectionLost(Throwable ex) {
+        logger.log(Level.WARNING, "Connection to MQTT broker lost.", ex);
+    }
+
+    @Override
+    public void messageArrived(String topic, MqttMessage mm) throws Exception {
+        group.distributeMessage(new EventMessage(topic, mm.getPayload(), mm.getQos(), mm.isRetained()));
+    }
+
+    @Override
+    public void deliveryComplete(IMqttDeliveryToken imdt) {
+    }    
 }

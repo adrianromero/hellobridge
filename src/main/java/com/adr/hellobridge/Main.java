@@ -27,8 +27,11 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -45,9 +48,9 @@ import spark.utils.SparkUtils;
  */
 public class Main {
 
-    private final static Logger log = Logger.getLogger(Main.class.getName());
-
-    public static void main(String[] args) throws MqttException {
+    private final static Logger logger = Logger.getLogger(Main.class.getName());
+    
+    public static void main(String[] args) {
 
         File configfile;
         if (args.length > 0) {
@@ -57,14 +60,23 @@ public class Main {
         }
 
         Properties config = getConfig(configfile);
-
-        ManagerMQTT manager = createManagerMQTT(config);
-        manager.connect();
+        
+        SubscriptionDefinition[] subs = getSubscriptions(config);
+        GroupManagers groups = new GroupManagers(config, subs);
+        
+        ManagerMQTT manager = createManagerMQTT(config, subs);
+        manager.registerTopicsManager(groups);
+        try {
+            manager.connect();
+        } catch (MqttException ex) {
+            logger.log(Level.SEVERE, "Cannot connect to MQTT broker.", ex);
+            throw new RuntimeException(ex);
+        }
 
         int port = Integer.parseInt(config.getProperty("web.port", "8080"));
         String token = config.getProperty("web.token", "HELLOBRIDGE");
         if (token.equals("HELLOBRIDGE")) {
-            log.warning("Using default security token, please change it in configuration property [web.token].");
+            logger.warning("Using default security token, please change it in configuration property [web.token].");
         }
 
         Service s = Service.ignite();
@@ -86,13 +98,13 @@ public class Main {
                     JsonParser gsonparser = new JsonParser();
                     JsonObject body = gsonparser.parse(request.body()).getAsJsonObject();
 
-                    int qos = body.has("qos") ? body.get("qos").getAsInt() : -1;
-                    byte[] message = parseMessage(body.get("message").getAsString());
+                    byte[] message = SubscriptionDefinition.parseMessage(body.get("message").getAsString());
+                    int qos = body.has("qos") ? body.get("qos").getAsInt() : 0;
                     boolean retained = body.has("retained") ? body.get("retained").getAsBoolean() : false;
 
                     try {
                         // Publish message
-                        manager.publish(topic, qos, message, retained);
+                        manager.publish(new EventMessage(topic, message, qos, retained));
 
                         result.addProperty("success", true);
                         result.addProperty("message", "Successfully sent message to topic [" + topic + "]");
@@ -100,19 +112,19 @@ public class Main {
                         response.status(500); // Internal error
                         result.addProperty("success", false);
                         result.addProperty("message", "Cannot publish message to MQTT broker.");
-                        log.log(Level.WARNING, "Cannot publish message to MQTT broker.", ex);
+                        logger.log(Level.WARNING, "Cannot publish message to MQTT broker.", ex);
                     }
                 } catch (JsonIOException | JsonSyntaxException ex) {
                     response.status(400); // BAD_REQUEST
                     result.addProperty("success", false);
                     result.addProperty("message", "Body must be a valid JSON.");
-                    log.log(Level.WARNING, "Body must be a valid JSON.", ex);
+                    logger.log(Level.WARNING, "Body must be a valid JSON.", ex);
 
                 } catch (Exception ex) {
                     response.status(400); // BAD_REQUEST
                     result.addProperty("success", false);
                     result.addProperty("message", "Body must be a valid MQTT message.");
-                    log.log(Level.WARNING, "Body must be a valid MQTT message.", ex);
+                    logger.log(Level.WARNING, "Body must be a valid MQTT message.", ex);
                 }
             }
 
@@ -133,7 +145,7 @@ public class Main {
                     }
                 }
             }
-            log.log(Level.INFO, "Unauthorized request from {0}", request.ip());
+            logger.log(Level.INFO, "Unauthorized request from {0}", request.ip());
             s.halt(401);
         });
     }
@@ -148,7 +160,7 @@ public class Main {
         }
     }
 
-    private static ManagerMQTT createManagerMQTT(Properties config) {
+    private static ManagerMQTT createManagerMQTT(Properties config, SubscriptionDefinition[] subs) {
 
         String host = config.getProperty("mqtt.host", "localhost");
         int port = Integer.parseInt(config.getProperty("mqtt.port", "1883"));
@@ -175,26 +187,42 @@ public class Main {
             sslproperties = null;
         }
         String mqtturl = protocol + "://" + host + ":" + port;
-        return new ManagerMQTT(
+        ManagerMQTT manager = new ManagerMQTT(
                 mqtturl,
                 config.getProperty("mqtt.username", ""),
                 config.getProperty("mqtt.password", ""),
-                config.getProperty("mqtt.clientid", "MQTTBridge"),
+                config.getProperty("mqtt.clientid", generateID()),
                 Integer.parseInt(config.getProperty("mqtt.connectiontimeout", Integer.toString(MqttConnectOptions.CONNECTION_TIMEOUT_DEFAULT))),
                 Integer.parseInt(config.getProperty("mqtt.keepaliveinterval", Integer.toString(MqttConnectOptions.KEEP_ALIVE_INTERVAL_DEFAULT))),
-                Integer.parseInt(config.getProperty("mqtt.defaultqos", "1")),
                 Integer.parseInt(config.getProperty("mqtt.version", Integer.toString(MqttConnectOptions.MQTT_VERSION_DEFAULT))),
                 Integer.parseInt(config.getProperty("mqtt.maxinflight", Integer.toString(MqttConnectOptions.MAX_INFLIGHT_DEFAULT))),
                 sslproperties);
-    }
 
-    private static byte[] parseMessage(String message) {
-        if (message.startsWith("plain:")) {
-            return message.substring(6).getBytes(StandardCharsets.UTF_8);
-        } else if (message.startsWith("base64:")) {
-            return Base64.getDecoder().decode(message.substring(7));
-        } else {
-            return message.getBytes(StandardCharsets.UTF_8);
+        for (SubscriptionDefinition sub : subs) {
+            manager.registerSubscription(sub.getTopic(), sub.getQos());          
         }
+        
+        return manager;
     }
+    
+    private static SubscriptionDefinition[] getSubscriptions(Properties config) {
+        List<SubscriptionDefinition> subs = new ArrayList<>();
+        for(Map.Entry<Object, Object> entry: config.entrySet()) {
+            String key = (String) entry.getKey();
+            if (key.startsWith("mqtt.topic.")) {
+                String [] parsed = key.split("\\.");
+                String id = parsed[2];
+                String topic = config.getProperty("mqtt.topic." + id);
+                int qos = Integer.parseInt(config.getProperty("mqtt.topic." + id + ".qos", "0"));
+                int format = Integer.parseInt(config.getProperty("mqtt.topic." + id + ".format", "0"));
+                subs.add(new SubscriptionDefinition(topic, format, qos));
+            }
+            
+        }
+        return subs.toArray(new SubscriptionDefinition[subs.size()]);
+    }
+    
+    public static String generateID() {
+        return "MQTTBridge-" + String.format("%09d", new SecureRandom().nextInt(1000000000));
+    }    
 }
