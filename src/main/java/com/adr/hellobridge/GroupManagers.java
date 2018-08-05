@@ -52,11 +52,7 @@ public class GroupManagers {
         
         for (SubscriptionDefinition sub : subs) {
             subscriptions.put(sub.getTopic(), sub);
-        }
-        
-        //curl -X POST -H "Content-Type: application/json" 
-        //-d '{"value1":"3","value2":"2","value3":"3"}' 
-        //https://maker.ifttt.com/trigger/event/with/key/XXXXXXXXXXXXXXX        
+        }     
     }
     
     public void distributeMessage(EventMessage message) {
