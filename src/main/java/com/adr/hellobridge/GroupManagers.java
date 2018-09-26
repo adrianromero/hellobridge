@@ -81,8 +81,12 @@ public class GroupManagers {
 
         try {
             String weburl = url
-                    .replace("{{subscription}}", URLEncoder.encode(subscriptiontopic, "UTF-8"))
-                    .replace("{{decodedsubscription}}", subscriptiontopic);
+                    .replace("{{subscription}}", sub.getName())
+                    .replace("{{topic}}", URLEncoder.encode(message.getTopic(), "UTF-8"))
+                    .replace("{{topicplain}}", message.getTopic())
+                    .replace("{{subscription}}", sub.getName())
+                    .replace("{{subscriptiontopic}}", URLEncoder.encode(subscriptiontopic, "UTF-8"))
+                    .replace("{{subscriptiontopicplain}}", subscriptiontopic);
 
             
             JsonObject result = new JsonObject();

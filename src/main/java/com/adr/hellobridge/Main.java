@@ -211,11 +211,11 @@ public class Main {
             String key = (String) entry.getKey();
             if (key.startsWith("mqtt.topic.")) {
                 String [] parsed = key.split("\\.");
-                String id = parsed[2];
-                String topic = config.getProperty("mqtt.topic." + id);
-                int qos = Integer.parseInt(config.getProperty("mqtt.topic." + id + ".qos", "0"));
-                int format = Integer.parseInt(config.getProperty("mqtt.topic." + id + ".format", "0"));
-                subs.add(new SubscriptionDefinition(topic, format, qos));
+                String name = parsed[2];
+                String topic = config.getProperty("mqtt.topic." + name);
+                int qos = Integer.parseInt(config.getProperty("mqtt.topic." + name + ".qos", "0"));
+                int format = Integer.parseInt(config.getProperty("mqtt.topic." + name + ".format", "0"));
+                subs.add(new SubscriptionDefinition(name, topic, format, qos));
             }
             
         }

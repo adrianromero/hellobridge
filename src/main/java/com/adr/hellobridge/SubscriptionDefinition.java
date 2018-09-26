@@ -30,14 +30,20 @@ public class SubscriptionDefinition {
     public final static int PLAIN = 0;
     public final static int FORMAT_BASE64 = 1;
     
+    private final String name;
     private final String topic;
     private final int format;
     private final int qos;
     
-    public SubscriptionDefinition(String topic, int format, int qos) {
+    public SubscriptionDefinition(String name, String topic, int format, int qos) {
+        this.name = name;
         this.topic = topic;
         this.format = format;
         this.qos = qos;
+    }
+    
+    public String getName() {
+        return name;
     }
 
     public String getTopic() {
