@@ -105,7 +105,9 @@ public class ManagerMQTT implements MqttCallback {
         options.setSSLProperties(sslproperties);
         mqttClient.connect(options).waitForCompletion(1000);
         mqttClient.setCallback(this);
-        mqttClient.subscribe(listtopics, listqos);
+        if (listtopics.length > 0) {
+            mqttClient.subscribe(listtopics, listqos);
+        }
             
         logger.log(Level.INFO, "Connected to MQTT broker on [{0}]", url);
     }
