@@ -106,18 +106,20 @@ public class GroupManagers {
                     .url(weburl)
                     .post(body)
                     .build();
-            Response response = client.newCall(request).execute();
-            
-            if (response.isSuccessful()) {
-               logger.log(Level.INFO, () -> "Subscription notified for: " + subscriptiontopic);
-            } else {
-               logger.log(Level.WARNING, () -> String.format("Subscription cannot be notified for: %s. Server returned: %s.", subscriptiontopic, response.code()));
+            try (Response response = client.newCall(request).execute()) {
+                if (response.isSuccessful()) {
+                    logger.log(Level.INFO, () -> "Subscription notified for: " + subscriptiontopic);
+                } else {
+                    logger.log(Level.WARNING, () -> String.format("Subscription cannot be notified for: %s. Server returned: %s.", subscriptiontopic, response.code()));
+                }
+                String responsebody = response.body().string();  
+                logger.log(Level.INFO, () -> "Notification returns body: " + responsebody);                
+            } catch (IOException ex) {
+                logger.log(Level.WARNING, String.format("Subscription failed for: %s.", subscriptiontopic), ex);
             }
-            
+       
         } catch (UnsupportedEncodingException ex) {
             throw new RuntimeException(ex);
-        } catch (IOException ex) {
-            logger.log(Level.WARNING, String.format("Subscription failed for: %s.", subscriptiontopic), ex);
         }
     }
 }
